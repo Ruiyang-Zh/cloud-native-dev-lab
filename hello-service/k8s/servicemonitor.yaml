@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hello-service-monitor
+  namespace: default
+  labels:
+    app: hello-service
+spec:
+  selector:
+    matchLabels:
+      app: hello-service
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
+      honorLabels: true
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'http_server_requests_seconds_count'
+          targetLabel: __tmp_qps_metric
+          replacement: 'qps'
+  namespaceSelector:
+    matchNames:
+      - default

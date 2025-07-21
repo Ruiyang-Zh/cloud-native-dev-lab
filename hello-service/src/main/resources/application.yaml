@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: hello-service
+  
+  # Redis
+  data:
+    redis:
+      host: redis-service
+      port: 6379
+
+# Spring Boot Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics,prometheus"
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    cn.edu.nju.cnd: INFO

@@ -1,0 +1,60 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-service-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    # CPU利用率
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # 内存利用率
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+    # QPS
+    - type: Pods
+      pods:
+        metric:
+          name: http_server_requests_seconds_count_rate
+        target:
+          type: AverageValue
+          averageValue: "50"
+
+  # 扩缩容行为配置
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5分钟稳定窗口
+      policies:
+        - type: Percent
+          value: 10              # 每次最多缩容10%
+          periodSeconds: 60      # 每分钟检查一次
+        - type: Pods
+          value: 2               # 每次最多缩容2个Pod
+          periodSeconds: 60
+      selectPolicy: Min        # 选择最保守的策略
+    scaleUp:
+      stabilizationWindowSeconds: 60   # 1分钟稳定窗口
+      policies:
+        - type: Percent
+          value: 100             # 每次最多扩容100%
+          periodSeconds: 15      # 每15秒检查一次
+        - type: Pods
+          value: 4               # 每次最多扩容4个Pod
+          periodSeconds: 15
+      selectPolicy: Max        # 选择最激进的策略
