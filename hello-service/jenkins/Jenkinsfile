@@ -1,0 +1,139 @@
+pipeline {
+    agent any
+
+    environment {
+        // 镜像仓库配置
+        DOCKER_REGISTRY = '172.22.83.19:30003'
+        IMAGE_NAMESPACE = 'nju14'
+        IMAGE_NAME = 'hello-service'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        FULL_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
+        LATEST_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest"
+
+        // Maven配置
+        MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository'
+    }
+
+    tools {
+        maven 'maven-3.8.6' // 需要在Jenkins中配置Maven工具
+        jdk 'jdk-21'        // 需要在Jenkins中配置JDK工具
+    }
+
+    stages {
+        stage('拉取代码') {
+            steps {
+                echo '开始拉取代码...'
+                checkout scm
+                echo '代码拉取完成'
+            }
+        }
+
+        stage('构建项目') {
+            steps {
+                echo '开始Maven构建...'
+                sh '''
+                    mvn clean compile -DskipTests
+                    echo "构建完成"
+                '''
+            }
+        }
+
+        stage('运行单元测试') {
+            steps {
+                echo '开始运行单元测试...'
+                sh '''
+                    mvn test
+                '''
+            }
+            post {
+                always {
+                    // 发布测试结果
+                    publishTestResults testResultsPattern: 'target/surefire-reports/*.xml'
+                    echo '单元测试完成'
+                }
+            }
+        }
+
+        stage('打包应用') {
+            steps {
+                echo '开始打包应用...'
+                sh '''
+                    mvn package -DskipTests
+                    echo "应用打包完成"
+                '''
+            }
+        }
+
+        stage('构建Docker镜像') {
+            steps {
+                echo '开始构建Docker镜像...'
+                script {
+                    // 构建镜像
+                    def image = docker.build("${FULL_IMAGE_NAME}")
+                    echo "镜像构建完成: ${FULL_IMAGE_NAME}"
+
+                    // 同时打上latest标签
+                    sh "docker tag ${FULL_IMAGE_NAME} ${LATEST_IMAGE_NAME}"
+                    echo "latest标签添加完成"
+                }
+            }
+        }
+
+        stage('推送Docker镜像') {
+            steps {
+                echo '开始推送Docker镜像到仓库...'
+                script {
+                    // 推送带版本号的镜像
+                    docker.withRegistry("http://${DOCKER_REGISTRY}") {
+                        sh "docker push ${FULL_IMAGE_NAME}"
+                        sh "docker push ${LATEST_IMAGE_NAME}"
+                    }
+                    echo "镜像推送完成"
+                }
+            }
+        }
+
+        stage('清理本地镜像') {
+            steps {
+                echo '清理本地Docker镜像...'
+                sh '''
+                    docker rmi ${FULL_IMAGE_NAME} || true
+                    docker rmi ${LATEST_IMAGE_NAME} || true
+                    docker system prune -f || true
+                    echo "镜像清理完成"
+                '''
+            }
+        }
+
+        stage('触发部署') {
+            steps {
+                echo '触发CD流水线...'
+                script {
+                    // 触发CD流水线，传递镜像标签
+                    build job: 'hello-service-cd',
+                          parameters: [
+                              string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}"),
+                              string(name: 'FULL_IMAGE_NAME', value: "${FULL_IMAGE_NAME}")
+                          ],
+                          wait: false
+                }
+                echo 'CD流水线触发完成'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '流水线执行完成，清理工作空间...'
+            cleanWs()
+        }
+        success {
+            echo 'CI流水线执行成功！'
+            // 可以发送成功通知
+        }
+        failure {
+            echo 'CI流水线执行失败！'
+            // 可以发送失败通知
+        }
+    }
+}
