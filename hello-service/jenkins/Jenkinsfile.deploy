@@ -7,17 +7,13 @@ pipeline {
     }
 
     environment {
-        // K8s配置 - 需要在Jenkins中配置kubeconfig凭据
         KUBECONFIG = credentials('kubeconfig')
-
-        // 镜像仓库配置
         DOCKER_REGISTRY = '172.22.83.19:30003'
         IMAGE_NAMESPACE = 'nju14'
         IMAGE_NAME = 'hello-service'
-
-        // 部署配置
         K8S_NAMESPACE = 'default'
         DEPLOYMENT_NAME = 'hello-service'
+        PROJECT_DIR = "hello-service"
     }
 
     stages {

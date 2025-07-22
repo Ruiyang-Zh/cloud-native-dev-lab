@@ -9,6 +9,7 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         FULL_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
         LATEST_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest"
+        PROJECT_DIR = "hello-service"
     }
 
     stages {
