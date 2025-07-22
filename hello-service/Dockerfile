@@ -1,34 +1,29 @@
-# 第一阶段：依赖下载
-FROM openjdk:21-jdk-slim AS dependencies
+# 第一阶段：依赖下载和构建
+FROM maven:3.9.6-openjdk-21-slim AS builder
 
 WORKDIR /app
 
-# 安装Maven
-RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
-
-# 下载依赖
+# 复制pom.xml并下载依赖
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
 
-# 第二阶段：构建阶段
-FROM dependencies AS builder
+# 复制源代码
+COPY src ./src
 
 # 构建应用
-COPY src ./src
-RUN mvn clean package -DskipTests -o
+RUN mvn clean package -B
 
-# 第三阶段：运行阶段
-FROM openjdk:21-jre-slim
+# 第二阶段：运行阶段
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
 # 创建非root用户
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+RUN addgroup -g 1000 appgroup && \
+    adduser -u 1000 -G appgroup -h /app -s /bin/sh -D appuser
 
 # 安装curl用于健康检查
-RUN apt-get update && \
-    apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl
 
 # 从构建阶段复制jar文件
 COPY --from=builder /app/target/*.jar app.jar
@@ -39,8 +34,8 @@ RUN chown appuser:appgroup app.jar
 # 切换到非root用户
 USER appuser
 
-# 环境变量
-ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:MaxRAMPercentage=75.0"
+# 环境变量优化
+ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC -XX:+UseStringDeduplication -XX:MaxRAMPercentage=75.0 -XX:+UseContainerSupport"
 ENV SPRING_PROFILES_ACTIVE=prod
 
 # 暴露端口
