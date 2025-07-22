@@ -25,12 +25,17 @@ pipeline {
             steps {
                 echo '检查项目结构...'
                 sh '''
-                    echo "=== 项目文件结构 ==="
+                    echo "=== 根目录文件结构 ==="
                     ls -la
+
+                    echo "=== 项目目录文件结构 ==="
+                    ls -la ${PROJECT_DIR}/
+
                     echo "=== 检查Dockerfile ==="
-                    cat Dockerfile
+                    cat ${PROJECT_DIR}/Dockerfile
+
                     echo "=== 检查pom.xml ==="
-                    cat pom.xml | head -20
+                    cat ${PROJECT_DIR}/pom.xml | head -20
                 '''
             }
         }
@@ -39,13 +44,15 @@ pipeline {
             steps {
                 echo '开始Docker构建（包含编译、测试、打包）...'
                 script {
-                    // 使用Dockerfile进行完整构建，包含Maven编译、测试、打包
-                    def image = docker.build("${FULL_IMAGE_NAME}")
-                    echo "镜像构建完成: ${FULL_IMAGE_NAME}"
+                    // ⭐ 关键：在项目目录中构建
+                    dir("${PROJECT_DIR}") {
+                        def image = docker.build("${FULL_IMAGE_NAME}")
+                        echo "镜像构建完成: ${FULL_IMAGE_NAME}"
 
-                    // 打上latest标签
-                    sh "docker tag ${FULL_IMAGE_NAME} ${LATEST_IMAGE_NAME}"
-                    echo "latest标签添加完成"
+                        // 打上latest标签
+                        sh "docker tag ${FULL_IMAGE_NAME} ${LATEST_IMAGE_NAME}"
+                        echo "latest标签添加完成"
+                    }
                 }
             }
         }
@@ -120,6 +127,7 @@ pipeline {
                 echo "构建号: ${BUILD_NUMBER}"
                 echo "Git提交: ${GIT_COMMIT}"
                 echo "构建镜像: ${FULL_IMAGE_NAME}"
+                echo "项目目录: ${PROJECT_DIR}"
                 echo "====================="
             '''
         }
@@ -135,6 +143,8 @@ pipeline {
                 docker images | head -5
                 echo "检查磁盘空间："
                 df -h
+                echo "检查项目目录："
+                ls -la ${PROJECT_DIR}/ || echo "项目目录不存在"
             '''
         }
         cleanup {
