@@ -1,5 +1,5 @@
 # 第一阶段：依赖下载和构建
-FROM maven:3.9.6-openjdk-21-slim AS builder
+FROM maven:3.9.6 AS builder
 
 WORKDIR /app
 
