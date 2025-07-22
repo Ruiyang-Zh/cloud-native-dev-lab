@@ -7,113 +7,166 @@ pipeline {
     }
 
     environment {
-        KUBECONFIG = credentials('kubeconfig') // 在Jenkins中配置K8s凭据
+        // K8s配置 - 需要在Jenkins中配置kubeconfig凭据
+        KUBECONFIG = credentials('kubeconfig')
+
+        // 镜像仓库配置
         DOCKER_REGISTRY = '172.22.83.19:30003'
         IMAGE_NAMESPACE = 'nju14'
         IMAGE_NAME = 'hello-service'
+
+        // 部署配置
+        K8S_NAMESPACE = 'default'
+        DEPLOYMENT_NAME = 'hello-service'
     }
 
     stages {
         stage('准备部署环境') {
             steps {
-                echo "开始部署镜像: ${params.FULL_IMAGE_NAME}"
-                echo "镜像标签: ${params.IMAGE_TAG}"
+                echo "🚀 开始部署镜像: ${params.FULL_IMAGE_NAME}"
+                echo "📦 镜像标签: ${params.IMAGE_TAG}"
 
                 // 验证kubectl连接
                 sh '''
+                    echo "=== 验证Kubernetes连接 ==="
                     kubectl version --client
+                    kubectl cluster-info
                     kubectl get nodes
-                    echo "K8s连接正常"
+                    echo "✅ K8s连接正常"
                 '''
             }
         }
 
         stage('更新部署文件') {
             steps {
-                echo '更新Kubernetes部署文件...'
+                echo '📝 更新Kubernetes部署文件...'
                 script {
+                    // 拉取最新代码以获取k8s配置文件
+                    checkout scm
+
                     // 读取deployment.yaml模板
                     def deploymentYaml = readFile('k8s/deployment.yaml')
 
-                    // 替换镜像地址
+                    // 计算要使用的镜像
                     def imageToUse = params.FULL_IMAGE_NAME ?: "${DOCKER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${params.IMAGE_TAG}"
-                    deploymentYaml = deploymentYaml.replaceAll('your-registry.com/hello-service:latest', imageToUse)
+
+                    // 替换镜像地址 - 更新你的deployment.yaml中的镜像地址
+                    deploymentYaml = deploymentYaml.replaceAll('172.22.83.19:30003/nju14/hello-service:latest', imageToUse)
 
                     // 写入临时文件
                     writeFile file: 'deployment-updated.yaml', text: deploymentYaml
-                    echo "部署文件更新完成，使用镜像: ${imageToUse}"
+
+                    echo "✅ 部署文件更新完成"
+                    echo "🐳 使用镜像: ${imageToUse}"
+
+                    // 显示更新后的镜像配置
+                    sh '''
+                        echo "=== 验证镜像配置 ==="
+                        grep -n "image:" deployment-updated.yaml || echo "未找到image配置"
+                    '''
                 }
             }
         }
 
         stage('部署到Kubernetes') {
             steps {
-                echo '开始部署到Kubernetes集群...'
+                echo '🎯 开始部署到Kubernetes集群...'
                 sh '''
+                    echo "=== 应用Kubernetes资源 ==="
+
                     # 部署应用
                     kubectl apply -f deployment-updated.yaml
-                    kubectl apply -f k8s/service.yaml
-                    kubectl apply -f k8s/servicemonitor.yaml
-                    kubectl apply -f k8s/hpa.yaml
+                    echo "✅ Deployment已更新"
 
-                    echo "Kubernetes资源部署完成"
+                    # 部署服务
+                    kubectl apply -f k8s/service.yaml
+                    echo "✅ Service已更新"
+
+                    # 部署监控配置
+                    kubectl apply -f k8s/servicemonitor.yaml
+                    echo "✅ ServiceMonitor已更新"
+
+                    # 部署HPA
+                    kubectl apply -f k8s/hpa.yaml
+                    echo "✅ HPA已更新"
+
+                    echo "🎉 所有Kubernetes资源部署完成"
                 '''
             }
         }
 
         stage('等待部署完成') {
             steps {
-                echo '等待Pod启动完成...'
+                echo '⏳ 等待Pod启动完成...'
                 sh '''
-                    # 等待部署完成
-                    kubectl rollout status deployment/hello-service --timeout=300s
+                    echo "=== 等待部署滚动更新完成 ==="
+                    kubectl rollout status deployment/${DEPLOYMENT_NAME} --timeout=300s
 
-                    # 检查Pod状态
-                    kubectl get pods -l app=hello-service
+                    echo "=== 检查Pod状态 ==="
+                    kubectl get pods -l app=${DEPLOYMENT_NAME} -o wide
 
-                    echo "部署状态检查完成"
+                    echo "=== 检查Deployment状态 ==="
+                    kubectl get deployment ${DEPLOYMENT_NAME}
+
+                    echo "✅ 部署状态检查完成"
                 '''
             }
         }
 
         stage('验证部署') {
             steps {
-                echo '验证部署是否成功...'
+                echo '🔍 验证部署是否成功...'
                 sh '''
-                    # 检查服务状态
-                    kubectl get svc hello-service
+                    echo "=== 检查服务状态 ==="
+                    kubectl get svc ${DEPLOYMENT_NAME}
+                    kubectl get svc ${DEPLOYMENT_NAME}-lb 2>/dev/null || echo "LoadBalancer服务未配置"
 
-                    # 检查端点
-                    kubectl get endpoints hello-service
+                    echo "=== 检查端点 ==="
+                    kubectl get endpoints ${DEPLOYMENT_NAME}
 
-                    # 获取一个Pod进行健康检查测试
-                    POD_NAME=$(kubectl get pods -l app=hello-service -o jsonpath='{.items[0].metadata.name}')
-                    echo "测试Pod: $POD_NAME"
+                    echo "=== 获取Pod进行健康检查 ==="
+                    POD_NAME=$(kubectl get pods -l app=${DEPLOYMENT_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
-                    # 等待Pod就绪
-                    kubectl wait --for=condition=ready pod/$POD_NAME --timeout=120s
+                    if [ -n "$POD_NAME" ]; then
+                        echo "测试Pod: $POD_NAME"
 
-                    # 测试健康检查端点
-                    kubectl exec $POD_NAME -- curl -f http://localhost:8080/actuator/health
+                        # 等待Pod就绪
+                        kubectl wait --for=condition=ready pod/$POD_NAME --timeout=120s
 
-                    echo "部署验证成功"
+                        # 测试健康检查端点
+                        echo "=== 测试健康检查端点 ==="
+                        kubectl exec $POD_NAME -- curl -f http://localhost:8080/actuator/health
+
+                        echo "✅ 健康检查通过"
+                    else
+                        echo "❌ 未找到可用的Pod"
+                        exit 1
+                    fi
                 '''
             }
         }
 
         stage('烟雾测试') {
             steps {
-                echo '执行烟雾测试...'
+                echo '🧪 执行烟雾测试...'
                 sh '''
-                    # 通过Service测试接口
-                    SERVICE_IP=$(kubectl get svc hello-service -o jsonpath='{.spec.clusterIP}')
+                    echo "=== 通过Service测试接口 ==="
+                    SERVICE_IP=$(kubectl get svc ${DEPLOYMENT_NAME} -o jsonpath='{.spec.clusterIP}')
                     echo "Service IP: $SERVICE_IP"
 
-                    # 创建一个临时Pod进行测试
-                    kubectl run test-pod --image=curlimages/curl:latest --rm -i --restart=Never -- \
-                        curl -f http://hello-service/hello
+                    # 创建临时Pod进行测试
+                    echo "=== 创建测试Pod ==="
+                    kubectl run test-pod-${BUILD_NUMBER} --image=curlimages/curl:latest --rm -i --restart=Never -- \
+                        curl -f -m 10 http://${DEPLOYMENT_NAME}.${K8S_NAMESPACE}.svc.cluster.local/hello
 
-                    echo "烟雾测试通过"
+                    echo "✅ 烟雾测试通过"
+
+                    # 测试限流接口
+                    echo "=== 测试限流功能 ==="
+                    kubectl run test-ratelimit-${BUILD_NUMBER} --image=curlimages/curl:latest --rm -i --restart=Never -- \
+                        sh -c 'for i in $(seq 1 5); do echo "Request $i:"; curl -f http://hello-service.default.svc.cluster.local/hello; echo; done'
+
+                    echo "✅ 限流测试完成"
                 '''
             }
         }
@@ -121,27 +174,68 @@ pipeline {
 
     post {
         always {
-            echo 'CD流水线执行完成'
+            echo '🏁 CD流水线执行完成'
             // 清理临时文件
             sh 'rm -f deployment-updated.yaml || true'
+
+            // 显示部署信息
+            sh '''
+                echo "=== 部署摘要 ==="
+                echo "部署镜像: ${FULL_IMAGE_NAME:-${DOCKER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}}"
+                echo "命名空间: ${K8S_NAMESPACE}"
+                echo "部署名称: ${DEPLOYMENT_NAME}"
+                echo "====================="
+            '''
         }
         success {
-            echo 'CD流水线执行成功！应用部署完成'
+            echo '🎉 CD流水线执行成功！应用部署完成'
             script {
-                // 获取服务信息
+                // 获取服务访问信息
                 def serviceInfo = sh(
-                    script: 'kubectl get svc hello-service-lb -o jsonpath="{.status.loadBalancer.ingress[0].ip}:{.spec.ports[0].port}" 2>/dev/null || echo "ClusterIP模式"',
+                    script: '''
+                        # 尝试获取LoadBalancer外部IP
+                        LB_IP=$(kubectl get svc hello-service-lb -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || echo "")
+                        LB_PORT=$(kubectl get svc hello-service-lb -o jsonpath="{.spec.ports[0].port}" 2>/dev/null || echo "")
+                        CLUSTER_IP=$(kubectl get svc hello-service -o jsonpath="{.spec.clusterIP}" 2>/dev/null || echo "")
+                        NODE_PORT=$(kubectl get svc hello-service-lb -o jsonpath="{.spec.ports[0].nodePort}" 2>/dev/null || echo "")
+
+                        if [ -n "$LB_IP" ] && [ -n "$LB_PORT" ]; then
+                            echo "LoadBalancer: http://$LB_IP:$LB_PORT"
+                        elif [ -n "$NODE_PORT" ]; then
+                            echo "NodePort: http://NODE_IP:$NODE_PORT"
+                        else
+                            echo "ClusterIP: http://$CLUSTER_IP:80 (集群内访问)"
+                        fi
+                    ''',
                     returnStdout: true
                 ).trim()
-                echo "应用访问地址: ${serviceInfo}"
+
+                echo "🌐 应用访问地址: ${serviceInfo}"
+
+                // 显示应用状态
+                sh '''
+                    echo "=== 最终应用状态 ==="
+                    kubectl get deployment,svc,pods -l app=hello-service
+                '''
             }
         }
         failure {
-            echo 'CD流水线执行失败！'
+            echo '❌ CD流水线执行失败！'
             sh '''
-                echo "部署失败，查看相关资源状态："
+                echo "=== 部署失败诊断信息 ==="
                 kubectl get pods -l app=hello-service
                 kubectl describe deployment hello-service
+
+                echo "=== 最近的Pod事件 ==="
+                kubectl get events --sort-by=.metadata.creationTimestamp | tail -10
+
+                echo "=== Pod日志 (如果存在) ==="
+                POD_NAME=$(kubectl get pods -l app=hello-service -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+                if [ -n "$POD_NAME" ]; then
+                    kubectl logs $POD_NAME --tail=20 || echo "无法获取Pod日志"
+                else
+                    echo "未找到Pod"
+                fi
             '''
         }
     }
