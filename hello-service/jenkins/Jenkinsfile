@@ -44,7 +44,6 @@ pipeline {
             steps {
                 echo '开始Docker构建（包含编译、测试、打包）...'
                 script {
-                    // ⭐ 关键：在项目目录中构建
                     dir("${PROJECT_DIR}") {
                         def image = docker.build("${FULL_IMAGE_NAME}")
                         echo "镜像构建完成: ${FULL_IMAGE_NAME}"
@@ -72,12 +71,12 @@ pipeline {
         stage('推送Docker镜像') {
             steps {
                 echo '开始推送Docker镜像到仓库...'
-                script {
-                    // 推送到指定仓库
-                    docker.withRegistry("http://${DOCKER_REGISTRY}") {
+                script {：
+                    docker.withRegistry("http://${DOCKER_REGISTRY}", '79fa236b-bc0e-4a27-adc9-31c62a76dcdc') {
                         sh "docker push ${FULL_IMAGE_NAME}"
                         sh "docker push ${LATEST_IMAGE_NAME}"
                     }
+
                     echo "镜像推送完成"
                     echo "推送的镜像: ${FULL_IMAGE_NAME}"
                     echo "推送的镜像: ${LATEST_IMAGE_NAME}"
