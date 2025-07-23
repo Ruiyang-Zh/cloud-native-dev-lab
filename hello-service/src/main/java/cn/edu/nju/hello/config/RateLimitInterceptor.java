@@ -20,10 +20,10 @@ import java.time.Duration;
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
 
-    @Value("${spring.redis.host}")
+    @Value("${spring.data.redis.host}")
     private String redisHost;
 
-    @Value("${spring.redis.port}")
+    @Value("${spring.data.redis.port}")
     private int redisPort;
 
     private LettuceBasedProxyManager proxyManager;
