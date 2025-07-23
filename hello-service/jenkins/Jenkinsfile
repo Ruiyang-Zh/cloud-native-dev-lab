@@ -117,7 +117,7 @@ pipeline {
                 echo '触发CD流水线...'
                 script {
                     // 触发CD流水线，传递镜像信息
-                    build job: 'hello-service-cd',
+                    build job: '014-hello-service-cd',
                           parameters: [
                               string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}"),
                               string(name: 'FULL_IMAGE_NAME', value: "${FULL_IMAGE_NAME}")
