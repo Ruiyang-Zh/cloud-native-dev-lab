@@ -71,16 +71,28 @@ pipeline {
         stage('推送Docker镜像') {
             steps {
                 echo '开始推送Docker镜像到仓库...'
-                script {：
-                    docker.withRegistry("http://${DOCKER_REGISTRY}", '79fa236b-bc0e-4a27-adc9-31c62a76dcdc') {
-                        sh "docker push ${FULL_IMAGE_NAME}"
-                        sh "docker push ${LATEST_IMAGE_NAME}"
-                    }
 
-                    echo "镜像推送完成"
-                    echo "推送的镜像: ${FULL_IMAGE_NAME}"
-                    echo "推送的镜像: ${LATEST_IMAGE_NAME}"
+                withCredentials([usernamePassword(
+                    credentialsId: '79fa236b-bc0e-4a27-adc9-31c62a76dcdc',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )]) {
+                    sh '''
+                        echo "正在登录Docker仓库..."
+                        echo "${DOCKER_PASSWORD}" | docker login ${DOCKER_REGISTRY} -u "${DOCKER_USERNAME}" --password-stdin
+
+                        echo "开始推送镜像..."
+                        docker push ${FULL_IMAGE_NAME}
+                        docker push ${LATEST_IMAGE_NAME}
+
+                        echo "清理登录信息..."
+                        docker logout ${DOCKER_REGISTRY}
+                    '''
                 }
+
+                echo "镜像推送完成"
+                echo "推送的镜像: ${FULL_IMAGE_NAME}"
+                echo "推送的镜像: ${LATEST_IMAGE_NAME}"
             }
         }
 
