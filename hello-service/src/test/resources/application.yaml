@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: hello-service
+
+# Spring Boot Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+
+# 日志配置
+logging:
+  level:
+    root: DEBUG
+    cn.edu.nju.cnd: DEBUG

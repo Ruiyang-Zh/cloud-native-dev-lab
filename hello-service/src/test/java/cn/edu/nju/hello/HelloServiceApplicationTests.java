@@ -2,6 +2,7 @@ package cn.edu.nju.hello;
 
 import jakarta.annotation.PostConstruct;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -16,6 +17,7 @@ class HelloServiceApplicationTests {
 
     private MockMvc mockMvc;
 
+    @Autowired
     private WebApplicationContext webApplicationContext;
 
     @PostConstruct
